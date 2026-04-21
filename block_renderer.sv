@@ -11,37 +11,40 @@ module block_renderer (
     output logic [11:0] pixel_color
 );
 
-localparam GRID_START_X      = 240;
-localparam GRID_START_Y      = 80;
-localparam GRID_WIDTH        = 160;
-localparam GRID_HEIGHT       = 320;
-localparam GRID_BORDER_OUTER = 2;
-localparam GRID_BORDER_INNER = 3;
+localparam GRID_START_X     = 240;
+localparam GRID_START_Y     = 80;
+localparam GRID_WIDTH       = 160;
+localparam GRID_HEIGHT      = 320;
+localparam GRID_BORDER      = 2;
+localparam CELL_SIZE        = 16;
 
-localparam HOLD_X            = 168;
-localparam HOLD_Y            = 80;
-localparam HOLD_W            = 56;
-localparam HOLD_H            = 72;
+localparam HOLD_X           = 168;
+localparam HOLD_Y           = 80;
+localparam HOLD_W           = 56;
+localparam HOLD_H           = 72;
 
-localparam NEXT_X            = 416;
-localparam NEXT_Y            = 80;
-localparam NEXT_W            = 56;
-localparam NEXT_H            = 104;
+localparam NEXT_X           = 416;
+localparam NEXT_Y           = 80;
+localparam NEXT_W           = 56;
+localparam NEXT_H           = 112;
 
-localparam SCORE_X           = 416;
-localparam SCORE_Y           = 222;
-localparam SCORE_W           = 56;
-localparam SCORE_H           = 72;
+localparam SCORE_X          = 416;
+localparam SCORE_Y          = 224;
+localparam SCORE_W          = 56;
+localparam SCORE_H          = 78;
 
-localparam GO_X              = 270;
-localparam GO_Y              = 190;
-localparam GAME_X            = 246;
-localparam GAME_Y            = 180;
-localparam RETRY_X           = 272;
-localparam RETRY_Y           = 222;
+localparam START_BOX_X      = 258;
+localparam START_BOX_Y      = 190;
+localparam START_BOX_W      = 124;
+localparam START_BOX_H      = 34;
+
+localparam GAME_BOX_X       = 220;
+localparam GAME_BOX_Y       = 176;
+localparam GAME_BOX_W       = 200;
+localparam GAME_BOX_H       = 70;
 
 logic in_grid;
-logic in_grid_outer;
+logic in_grid_border;
 logic in_hold_box;
 logic in_next_box;
 logic in_score_box;
@@ -63,11 +66,10 @@ function automatic [14:0] glyph;
             "9": glyph = 15'b111101111001111;
             "A": glyph = 15'b111101111101101; "C": glyph = 15'b111100100100111; "D": glyph = 15'b110101101101110;
             "E": glyph = 15'b111100110100111; "G": glyph = 15'b111100101101111; "H": glyph = 15'b101101111101101;
-            "I": glyph = 15'b111010010010111; "L": glyph = 15'b100100100100111; "N": glyph = 15'b101111111111101;
-            "O": glyph = 15'b111101101101111; "P": glyph = 15'b111101111100100; "R": glyph = 15'b110101110101101;
-            "S": glyph = 15'b111100111001111; "T": glyph = 15'b111010010010010; "U": glyph = 15'b101101101101111;
-            "V": glyph = 15'b101101101101010; "X": glyph = 15'b101101010101101; "Y": glyph = 15'b101101010010010;
-            "!": glyph = 15'b010010010000010;
+            "L": glyph = 15'b100100100100111; "N": glyph = 15'b101111111111101; "O": glyph = 15'b111101101101111;
+            "P": glyph = 15'b111101111100100; "R": glyph = 15'b110101110101101; "S": glyph = 15'b111100111001111;
+            "T": glyph = 15'b111010010010010; "U": glyph = 15'b101101101101111; "V": glyph = 15'b101101101101010;
+            "X": glyph = 15'b101101010101101; "!": glyph = 15'b010010010000010;
             default: glyph = 15'b000000000000000;
         endcase
     end
@@ -175,8 +177,8 @@ endfunction
 
 assign in_grid = (curr_pix_x >= GRID_START_X) && (curr_pix_x < GRID_START_X + GRID_WIDTH) &&
                  (curr_pix_y >= GRID_START_Y) && (curr_pix_y < GRID_START_Y + GRID_HEIGHT);
-assign in_grid_outer = (curr_pix_x >= GRID_START_X - GRID_BORDER_OUTER) && (curr_pix_x < GRID_START_X + GRID_WIDTH + GRID_BORDER_OUTER) &&
-                       (curr_pix_y >= GRID_START_Y - GRID_BORDER_OUTER) && (curr_pix_y < GRID_START_Y + GRID_HEIGHT + GRID_BORDER_OUTER);
+assign in_grid_border = (curr_pix_x >= GRID_START_X - GRID_BORDER) && (curr_pix_x < GRID_START_X + GRID_WIDTH + GRID_BORDER) &&
+                        (curr_pix_y >= GRID_START_Y - GRID_BORDER) && (curr_pix_y < GRID_START_Y + GRID_HEIGHT + GRID_BORDER);
 assign in_hold_box = (curr_pix_x >= HOLD_X) && (curr_pix_x < HOLD_X + HOLD_W) &&
                      (curr_pix_y >= HOLD_Y) && (curr_pix_y < HOLD_Y + HOLD_H);
 assign in_next_box = (curr_pix_x >= NEXT_X) && (curr_pix_x < NEXT_X + NEXT_W) &&
@@ -199,8 +201,7 @@ always_comb begin
     logic [1:0] preview_cell_y;
     logic [3:0] preview_px_x;
     logic [3:0] preview_px_y;
-    logic [3:0] render_id;
-    logic       ghost_cell;
+
     query_valid = 1'b0;
     query_x     = 4'd0;
     query_y     = 5'd0;
@@ -210,18 +211,35 @@ always_comb begin
     preview_cell_y = 2'd0;
     preview_px_x = 4'd0;
     preview_px_y = 4'd0;
-    render_id   = 4'd0;
-    ghost_cell  = 1'b0;
-    pixel_color = curr_pix_x[6] ? 12'h000 : 12'h010;
-    if (in_grid_outer) begin
-        pixel_color = 12'hDDD;
+
+    pixel_color = 12'h000;
+
+    if ((curr_pix_x == HOLD_X + HOLD_W + 8) || (curr_pix_x == NEXT_X - 8)) begin
+        if ((curr_pix_y >= GRID_START_Y - 8) && (curr_pix_y < GRID_START_Y + GRID_HEIGHT + 8)) begin
+            pixel_color = 12'h444;
+        end
+    end
+
+    if ((curr_pix_y >= GRID_START_Y - 8) && (curr_pix_y < GRID_START_Y + GRID_HEIGHT + 8)) begin
+        if ((curr_pix_x >= GRID_START_X + GRID_WIDTH + 8) && (curr_pix_x < GRID_START_X + GRID_WIDTH + 10)) begin
+            pixel_color = 12'h666;
+        end
+    end
+
+    if (in_grid_border) begin
+        if ((curr_pix_x < GRID_START_X) || (curr_pix_x >= GRID_START_X + GRID_WIDTH) ||
+            (curr_pix_y < GRID_START_Y) || (curr_pix_y >= GRID_START_Y + GRID_HEIGHT)) begin
+            pixel_color = 12'hDDD;
+        end else begin
+            pixel_color = 12'h111;
+        end
     end
 
     if (in_grid) begin
         if ((px == 0) || (py == 0)) begin
             pixel_color = 12'h222;
         end else begin
-            pixel_color = 12'h000;
+            pixel_color = 12'h090;
         end
     end
 
@@ -229,8 +247,6 @@ always_comb begin
         query_valid = 1'b1;
         query_x     = cell_x;
         query_y     = cell_y;
-        ghost_cell  = (cell_value >= 4'd8);
-        render_id   = ghost_cell ? (cell_value - 4'd7) : cell_value;
 
         if (cell_value == 4'h0) begin
             if ((px == 0) || (py == 0)) begin
@@ -238,27 +254,16 @@ always_comb begin
             end else begin
                 pixel_color = 12'h000;
             end
-        end else if (ghost_cell) begin
-            if ((px == 0) || (py == 0) || (px == 15) || (py == 15)) begin
-                pixel_color = block_shadow_color(render_id);
-            end else if (((px == 2) || (py == 2) || (px == 13) || (py == 13)) && !(px[1] ^ py[1])) begin
-                pixel_color = block_base_color(render_id);
-            end else begin
-                pixel_color = 12'h000;
-            end
         end else if ((px <= 1) || (py <= 1)) begin
-            pixel_color = block_light_color(render_id);
+            pixel_color = block_light_color(cell_value);
         end else if ((px >= 14) || (py >= 14)) begin
-            pixel_color = block_shadow_color(render_id);
-        end else if ((px == 3) || (py == 3)) begin
-            pixel_color = block_light_color(render_id);
+            pixel_color = block_shadow_color(cell_value);
         end else begin
-            pixel_color = block_base_color(render_id);
+            pixel_color = block_base_color(cell_value);
         end
     end
 
     if (in_hold_box || in_next_box || in_score_box) begin
-        pixel_color = 12'h000;
         if ((curr_pix_x == HOLD_X) || (curr_pix_x == HOLD_X + HOLD_W - 1) ||
             (curr_pix_y == HOLD_Y) || (curr_pix_y == HOLD_Y + HOLD_H - 1)) begin
             pixel_color = 12'hDDD;
@@ -268,20 +273,20 @@ always_comb begin
             pixel_color = 12'hDDD;
         end
         if ((curr_pix_x == SCORE_X) || (curr_pix_x == SCORE_X + SCORE_W - 1) ||
-            (curr_pix_y == SCORE_Y) || (curr_pix_y == SCORE_H + SCORE_Y - 1)) begin
+            (curr_pix_y == SCORE_Y) || (curr_pix_y == SCORE_Y + SCORE_H - 1)) begin
             pixel_color = 12'hDDD;
         end
     end
 
     if (
-        hit(curr_pix_x, curr_pix_y, HOLD_X - 2, HOLD_Y - 12, "H", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, HOLD_X + 2, HOLD_Y - 12, "O", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, HOLD_X + 6, HOLD_Y - 12, "L", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, HOLD_X + 10, HOLD_Y - 12, "D", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, NEXT_X + 12, NEXT_Y - 12, "N", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, NEXT_X + 16, NEXT_Y - 12, "E", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, NEXT_X + 20, NEXT_Y - 12, "X", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, NEXT_X + 24, NEXT_Y - 12, "T", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, HOLD_X + 8, HOLD_Y - 12, "H", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, HOLD_X + 12, HOLD_Y - 12, "O", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, HOLD_X + 16, HOLD_Y - 12, "L", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, HOLD_X + 20, HOLD_Y - 12, "D", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, NEXT_X + 10, NEXT_Y - 12, "N", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, NEXT_X + 14, NEXT_Y - 12, "E", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, NEXT_X + 18, NEXT_Y - 12, "X", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, NEXT_X + 22, NEXT_Y - 12, "T", 2'd0) ||
         hit(curr_pix_x, curr_pix_y, SCORE_X + 6, SCORE_Y - 12, "S", 2'd0) ||
         hit(curr_pix_x, curr_pix_y, SCORE_X + 10, SCORE_Y - 12, "C", 2'd0) ||
         hit(curr_pix_x, curr_pix_y, SCORE_X + 14, SCORE_Y - 12, "O", 2'd0) ||
@@ -293,7 +298,7 @@ always_comb begin
 
     if (in_next_box) begin
         preview_x      = curr_pix_x - (NEXT_X + 4);
-        preview_y      = curr_pix_y - (NEXT_Y + 20);
+        preview_y      = curr_pix_y - (NEXT_Y + 16);
         preview_cell_x = preview_x[5:4];
         preview_cell_y = preview_y[5:4];
         preview_px_x   = preview_x[3:0];
@@ -305,8 +310,6 @@ always_comb begin
                 pixel_color = block_light_color(next_piece + 4'd1);
             end else if ((preview_px_x >= 14) || (preview_px_y >= 14)) begin
                 pixel_color = block_shadow_color(next_piece + 4'd1);
-            end else if ((preview_px_x == 3) || (preview_px_y == 3)) begin
-                pixel_color = block_light_color(next_piece + 4'd1);
             end else begin
                 pixel_color = block_base_color(next_piece + 4'd1);
             end
@@ -314,51 +317,78 @@ always_comb begin
     end
 
     if (
-        hit(curr_pix_x, curr_pix_y, SCORE_X + 6,  SCORE_Y + 14, "0", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, SCORE_X + 10, SCORE_Y + 14, "0", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, SCORE_X + 14, SCORE_Y + 14, digit_char(score[15:12]), 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, SCORE_X + 18, SCORE_Y + 14, digit_char(score[11:8]), 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, SCORE_X + 22, SCORE_Y + 14, digit_char(score[7:4]), 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, SCORE_X + 26, SCORE_Y + 14, digit_char(score[3:0]), 2'd0)
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 14, SCORE_Y + 16, digit_char(score[15:12]), 2'd1) ||
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 22, SCORE_Y + 16, digit_char(score[11:8]), 2'd1) ||
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 30, SCORE_Y + 16, digit_char(score[7:4]), 2'd1) ||
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 38, SCORE_Y + 16, digit_char(score[3:0]), 2'd1)
     ) begin
         pixel_color = 12'hDDD;
     end
 
     if (
-        hit(curr_pix_x, curr_pix_y, SCORE_X + 20, SCORE_Y + 34, "0", 2'd0) ||
-        hit(curr_pix_x, curr_pix_y, SCORE_X + 24, SCORE_Y + 34, "1", 2'd0)
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 10, SCORE_Y + 48, "L", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 14, SCORE_Y + 48, "V", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 18, SCORE_Y + 48, "L", 2'd0)
+    ) begin
+        pixel_color = 12'hAAA;
+    end
+    if (
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 30, SCORE_Y + 48, "0", 2'd0) ||
+        hit(curr_pix_x, curr_pix_y, SCORE_X + 34, SCORE_Y + 48, "1", 2'd0)
     ) begin
         pixel_color = 12'hAAA;
     end
 
     if (ui_state == 2'd0) begin
+        if ((curr_pix_x >= START_BOX_X) && (curr_pix_x < START_BOX_X + START_BOX_W) &&
+            (curr_pix_y >= START_BOX_Y) && (curr_pix_y < START_BOX_Y + START_BOX_H)) begin
+            if ((curr_pix_x == START_BOX_X) || (curr_pix_x == START_BOX_X + START_BOX_W - 1) ||
+                (curr_pix_y == START_BOX_Y) || (curr_pix_y == START_BOX_Y + START_BOX_H - 1)) begin
+                pixel_color = 12'hCA4;
+            end else begin
+                pixel_color = 12'h111;
+            end
+        end
+
         if (
-            hit(curr_pix_x, curr_pix_y, GO_X, GO_Y, "G", 2'd2) ||
-            hit(curr_pix_x, curr_pix_y, GO_X + 16, GO_Y, "O", 2'd2) ||
-            hit(curr_pix_x, curr_pix_y, GO_X + 32, GO_Y, "!", 2'd2)
+            hit(curr_pix_x, curr_pix_y, 286, 198, "G", 2'd2) ||
+            hit(curr_pix_x, curr_pix_y, 302, 198, "O", 2'd2) ||
+            hit(curr_pix_x, curr_pix_y, 318, 198, "!", 2'd2)
         ) begin
-            pixel_color = curr_pix_y[2] ? 12'hECA : 12'hC96;
+            pixel_color = 12'hECA;
         end
     end else if (ui_state == 2'd2) begin
+        if ((curr_pix_x >= GAME_BOX_X) && (curr_pix_x < GAME_BOX_X + GAME_BOX_W) &&
+            (curr_pix_y >= GAME_BOX_Y) && (curr_pix_y < GAME_BOX_Y + GAME_BOX_H)) begin
+            if ((curr_pix_x == GAME_BOX_X) || (curr_pix_x == GAME_BOX_X + GAME_BOX_W - 1) ||
+                (curr_pix_y == GAME_BOX_Y) || (curr_pix_y == GAME_BOX_Y + GAME_BOX_H - 1)) begin
+                pixel_color = 12'hDDD;
+            end else begin
+                pixel_color = 12'h111;
+            end
+        end
+
         if (
-            hit(curr_pix_x, curr_pix_y, GAME_X,      GAME_Y, "G", 2'd1) ||
-            hit(curr_pix_x, curr_pix_y, GAME_X + 8,  GAME_Y, "A", 2'd1) ||
-            hit(curr_pix_x, curr_pix_y, GAME_X + 16, GAME_Y, "M", 2'd1) ||
-            hit(curr_pix_x, curr_pix_y, GAME_X + 24, GAME_Y, "E", 2'd1) ||
-            hit(curr_pix_x, curr_pix_y, GAME_X + 48, GAME_Y, "O", 2'd1) ||
-            hit(curr_pix_x, curr_pix_y, GAME_X + 56, GAME_Y, "V", 2'd1) ||
-            hit(curr_pix_x, curr_pix_y, GAME_X + 64, GAME_Y, "E", 2'd1) ||
-            hit(curr_pix_x, curr_pix_y, GAME_X + 72, GAME_Y, "R", 2'd1)
+            hit(curr_pix_x, curr_pix_y, 244, 188, "G", 2'd1) ||
+            hit(curr_pix_x, curr_pix_y, 252, 188, "A", 2'd1) ||
+            hit(curr_pix_x, curr_pix_y, 260, 188, "M", 2'd1) ||
+            hit(curr_pix_x, curr_pix_y, 268, 188, "E", 2'd1) ||
+            hit(curr_pix_x, curr_pix_y, 292, 188, "O", 2'd1) ||
+            hit(curr_pix_x, curr_pix_y, 300, 188, "V", 2'd1) ||
+            hit(curr_pix_x, curr_pix_y, 308, 188, "E", 2'd1) ||
+            hit(curr_pix_x, curr_pix_y, 316, 188, "R", 2'd1)
         ) begin
             pixel_color = 12'hF88;
         end
 
         if (
-            hit(curr_pix_x, curr_pix_y, RETRY_X,      RETRY_Y, "R", 2'd0) ||
-            hit(curr_pix_x, curr_pix_y, RETRY_X + 4,  RETRY_Y, "E", 2'd0) ||
-            hit(curr_pix_x, curr_pix_y, RETRY_X + 8,  RETRY_Y, "T", 2'd0) ||
-            hit(curr_pix_x, curr_pix_y, RETRY_X + 12, RETRY_Y, "R", 2'd0) ||
-            hit(curr_pix_x, curr_pix_y, RETRY_X + 16, RETRY_Y, "Y", 2'd0)
+            hit(curr_pix_x, curr_pix_y, 272, 216, "U", 2'd0) ||
+            hit(curr_pix_x, curr_pix_y, 276, 216, "P", 2'd0) ||
+            hit(curr_pix_x, curr_pix_y, 288, 216, "R", 2'd0) ||
+            hit(curr_pix_x, curr_pix_y, 292, 216, "E", 2'd0) ||
+            hit(curr_pix_x, curr_pix_y, 296, 216, "T", 2'd0) ||
+            hit(curr_pix_x, curr_pix_y, 300, 216, "R", 2'd0) ||
+            hit(curr_pix_x, curr_pix_y, 304, 216, "Y", 2'd0)
         ) begin
             pixel_color = 12'hCA4;
         end

@@ -50,7 +50,6 @@ logic       fall_attempt;
 logic       fall_accepted;
 logic [15:0] active_shape;
 logic [15:0] effective_shape;
-logic [5:0]  ghost_y;
 
 function automatic [15:0] get_shape;
     input [2:0] piece_type;
@@ -160,22 +159,6 @@ function automatic [15:0] add_score_bcd;
     end
 endfunction
 
-function automatic [5:0] calc_ghost_y;
-    input [2:0] piece_type;
-    input [1:0] piece_rot;
-    input signed [5:0] piece_x;
-    input [5:0] piece_y;
-    integer step;
-    begin
-        calc_ghost_y = piece_y;
-        for (step = 0; step < 20; step = step + 1) begin
-            if (!check_collision(piece_type, piece_rot, piece_x, calc_ghost_y + 6'd1)) begin
-                calc_ghost_y = calc_ghost_y + 6'd1;
-            end
-        end
-    end
-endfunction
-
 always_comb begin
     spawn_piece     = piece_index;
     spawn_collision = check_collision(spawn_piece, 2'd0, 6'sd3, 6'd0);
@@ -202,7 +185,6 @@ always_comb begin
     fall_accepted = !check_collision(active_piece, effective_rot, effective_x, active_y + 6'd1);
     active_shape  = get_shape(active_piece, active_rot);
     effective_shape = get_shape(active_piece, effective_rot);
-    ghost_y       = calc_ghost_y(active_piece, active_rot, active_x, active_y);
 end
 
 always_ff @(posedge gm_clk) begin
@@ -332,14 +314,6 @@ always_comb begin
             (rel_y >= 0) && (rel_y < 4) &&
             active_shape[15 - (rel_y * 4 + rel_x)]) begin
             query_value = active_piece + 4'd1;
-        end else begin
-            rel_y = $signed({1'b0, query_y}) - $signed({1'b0, ghost_y[4:0]});
-            if ((rel_x >= 0) && (rel_x < 4) &&
-                (rel_y >= 0) && (rel_y < 4) &&
-                active_shape[15 - (rel_y * 4 + rel_x)] &&
-                (board_mem[query_y][query_x] == 4'h0)) begin
-                query_value = active_piece + 4'd8;
-            end
         end
     end
 end
